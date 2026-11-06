@@ -1,17 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { PortfolioProject } from "@/lib/types";
 import { PortfolioForm } from "@/components/admin/AdminForms";
+
+export const dynamic = "force-dynamic";
 
 export default async function EditPortfolioPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const projectId = Number.parseInt(id, 10);
   if (!Number.isFinite(projectId)) notFound();
-  const project = await queryOne<PortfolioProject>(
-    "SELECT * FROM portfolio_projects WHERE id = ? LIMIT 1",
-    [projectId],
-  ).catch(() => null);
+  const project = await apiFetch<PortfolioProject>(`/admin/portfolio/${projectId}`, {
+    admin: true,
+  });
   if (!project) notFound();
   return (
     <>

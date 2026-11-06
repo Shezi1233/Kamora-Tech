@@ -1,27 +1,42 @@
 import Link from "next/link";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { ContactMessage, OrderWithCustomer } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
+type AdminDashboard = {
+  stats: {
+    total: number;
+    active: number;
+    customers: number;
+    new_messages: number;
+    paid_revenue: string | number;
+  };
+  recent_orders: OrderWithCustomer[];
+  latest_messages: ContactMessage[];
+};
+
 export default async function AdminDashboardPage() {
-  const [orders, active, customers, messages, revenue, recent, latestMessages] = await Promise.all([
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM orders").catch(() => null),
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM orders WHERE status NOT IN ('Delivered','Completed','Cancelled')").catch(() => null),
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM users").catch(() => null),
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM contact_messages WHERE status = 'new'").catch(() => null),
-    queryOne<{ total: string }>("SELECT COALESCE(SUM(total),0) AS total FROM orders WHERE payment_status = 'Paid'").catch(() => null),
-    query<OrderWithCustomer>(
-      `SELECT o.*, u.full_name, u.email FROM orders o JOIN users u ON u.id = o.user_id ORDER BY o.id DESC LIMIT 6`,
-    ).catch(() => []),
-    query<ContactMessage>("SELECT * FROM contact_messages ORDER BY id DESC LIMIT 4").catch(() => []),
-  ]);
+  let data: AdminDashboard = {
+    stats: { total: 0, active: 0, customers: 0, new_messages: 0, paid_revenue: 0 },
+    recent_orders: [],
+    latest_messages: [],
+  };
+  try {
+    data = await apiFetch<AdminDashboard>("/admin/dashboard", { admin: true });
+  } catch (error) {
+    console.error("[admin] dashboard failed", error);
+  }
+  const recent = data.recent_orders;
+  const latestMessages = data.latest_messages;
 
   const stats = [
-    { label: "Total orders", value: Number(orders?.total ?? 0), href: "/admin/orders" },
-    { label: "Active orders", value: Number(active?.total ?? 0), href: "/admin/orders" },
-    { label: "Customers", value: Number(customers?.total ?? 0), href: "/admin/customers" },
-    { label: "New messages", value: Number(messages?.total ?? 0), href: "/admin/messages" },
-    { label: "Paid revenue", value: money(revenue?.total ?? 0), href: "/admin/payments" },
+    { label: "Total orders", value: Number(data.stats.total), href: "/admin/orders" },
+    { label: "Active orders", value: Number(data.stats.active), href: "/admin/orders" },
+    { label: "Customers", value: Number(data.stats.customers), href: "/admin/customers" },
+    { label: "New messages", value: Number(data.stats.new_messages), href: "/admin/messages" },
+    { label: "Paid revenue", value: money(data.stats.paid_revenue), href: "/admin/payments" },
   ];
 
   return (

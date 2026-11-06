@@ -1,7 +1,9 @@
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Testimonial } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import { testimonialAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -13,9 +15,9 @@ export default async function AdminTestimonialsPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const testimonials = await query<Testimonial>(
-    "SELECT * FROM testimonials ORDER BY id DESC",
-  ).catch(() => []);
+  const testimonials = await apiFetch<Testimonial[]>("/admin/testimonials", {
+    admin: true,
+  });
 
   return (
     <>

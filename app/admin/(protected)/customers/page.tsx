@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { User } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 import { toggleCustomerAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -15,14 +17,13 @@ export default async function AdminCustomersPage({
 }) {
   const params = await searchParams;
   const q = one(params.q).trim();
-  const customers = await query<User & { order_count: number; total_spent: string }>(
-    `SELECT u.id, u.full_name, u.email, u.phone, u.is_active, u.created_at,
-            COUNT(DISTINCT o.id) AS order_count, COALESCE(SUM(o.total),0) AS total_spent
-     FROM users u LEFT JOIN orders o ON o.user_id = u.id
-     ${q ? "WHERE u.full_name LIKE ? OR u.email LIKE ?" : ""}
-     GROUP BY u.id ORDER BY u.id DESC LIMIT 200`,
-    q ? [`%${q}%`, `%${q}%`] : [],
-  ).catch(() => []);
+  const path = q
+    ? `/admin/customers?${new URLSearchParams({ q }).toString()}`
+    : "/admin/customers";
+  const customers = await apiFetch<(User & { order_count: number; total_spent: string })[]>(
+    path,
+    { admin: true },
+  );
 
   return (
     <>

@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Category } from "@/lib/types";
 import { deleteCategoryAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -13,11 +15,10 @@ export default async function AdminCategoriesPage({
   searchParams: Promise<{ success?: string; error?: string }>;
 }) {
   const params = await searchParams;
-  const categories = await query<Category & { service_count: number }>(
-    `SELECT c.*, COUNT(s.id) AS service_count FROM categories c
-     LEFT JOIN services s ON s.category_id = c.id
-     GROUP BY c.id ORDER BY c.name`,
-  ).catch(() => []);
+  const categories = await apiFetch<(Category & { service_count: number })[]>(
+    "/admin/categories",
+    { admin: true },
+  );
 
   return (
     <>

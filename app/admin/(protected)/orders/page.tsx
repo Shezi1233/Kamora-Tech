@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { OrderWithCustomer } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 import { ORDER_STATUSES } from "@/lib/constants";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -17,23 +19,13 @@ export default async function AdminOrdersPage({
   const q = one(params.q).trim();
   const status = one(params.status).trim();
 
-  const conditions: string[] = [];
-  const values: (string | number)[] = [];
-  if (q) {
-    conditions.push("(o.tracking_id LIKE ? OR u.full_name LIKE ? OR u.email LIKE ?)");
-    values.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
-  if (status) {
-    conditions.push("o.status = ?");
-    values.push(status);
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
-
-  const orders = await query<OrderWithCustomer>(
-    `SELECT o.*, u.full_name, u.email FROM orders o JOIN users u ON u.id = o.user_id
-     ${where} ORDER BY o.id DESC LIMIT 200`,
-    values,
-  ).catch(() => []);
+  const query = new URLSearchParams();
+  if (q) query.set("q", q);
+  if (status) query.set("status_filter", status);
+  const orders = await apiFetch<OrderWithCustomer[]>(
+    `/admin/orders${query.toString() ? `?${query.toString()}` : ""}`,
+    { admin: true },
+  );
 
   return (
     <>

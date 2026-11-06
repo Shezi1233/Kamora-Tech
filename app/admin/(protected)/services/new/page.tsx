@@ -1,10 +1,14 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Category } from "@/lib/types";
 import { ServiceForm } from "@/components/admin/AdminForms";
 
+export const dynamic = "force-dynamic";
+
 export default async function NewServicePage() {
-  const categories = await query<Category>("SELECT * FROM categories ORDER BY name").catch(() => []);
+  const categories = await apiFetch<Category[]>("/admin/categories", {
+    admin: true,
+  });
   return (
     <>
       <Link href="/admin/services" className="small">← Back to services</Link>

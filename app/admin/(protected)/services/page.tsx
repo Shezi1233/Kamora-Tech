@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Service } from "@/lib/types";
 import { priceLabel } from "@/lib/format";
 import { deleteServiceAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -15,13 +17,12 @@ export default async function AdminServicesPage({
 }) {
   const params = await searchParams;
   const q = one(params.q).trim();
-  const services = await query<Service & { category_name: string }>(
-    `SELECT s.*, c.name AS category_name FROM services s
-     JOIN categories c ON c.id = s.category_id
-     ${q ? "WHERE s.title LIKE ?" : ""}
-     ORDER BY s.id DESC`,
-    q ? [`%${q}%`] : [],
-  ).catch(() => []);
+  const path = q
+    ? `/admin/services?${new URLSearchParams({ q }).toString()}`
+    : "/admin/services";
+  const services = await apiFetch<(Service & { category_name: string })[]>(path, {
+    admin: true,
+  });
 
   return (
     <>

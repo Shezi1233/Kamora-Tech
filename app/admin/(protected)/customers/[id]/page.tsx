@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Order, User } from "@/lib/types";
 import { formatDate, formatDateTime, money } from "@/lib/format";
 import { toggleCustomerAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 export default async function AdminCustomerDetailPage({
   params,
@@ -13,9 +15,12 @@ export default async function AdminCustomerDetailPage({
   const { id } = await params;
   const userId = Number.parseInt(id, 10);
   if (!Number.isFinite(userId)) notFound();
-  const customer = await queryOne<User>("SELECT * FROM users WHERE id = ? LIMIT 1", [userId]).catch(() => null);
+  const customer = await apiFetch<User & { orders: Order[] }>(
+    `/admin/customers/${userId}`,
+    { admin: true },
+  );
   if (!customer) notFound();
-  const orders = await query<Order>("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC", [userId]).catch(() => []);
+  const orders = customer.orders ?? [];
 
   return (
     <>

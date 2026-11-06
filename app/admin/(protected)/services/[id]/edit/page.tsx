@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Category, Service } from "@/lib/types";
 import { ServiceForm } from "@/components/admin/AdminForms";
+
+export const dynamic = "force-dynamic";
 
 export default async function EditServicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const serviceId = Number.parseInt(id, 10);
   if (!Number.isFinite(serviceId)) notFound();
   const [service, categories] = await Promise.all([
-    queryOne<Service>("SELECT * FROM services WHERE id = ? LIMIT 1", [serviceId]).catch(() => null),
-    query<Category>("SELECT * FROM categories ORDER BY name").catch(() => []),
+    apiFetch<Service>(`/admin/services/${serviceId}`, { admin: true }),
+    apiFetch<Category[]>("/admin/categories", { admin: true }),
   ]);
   if (!service) notFound();
 

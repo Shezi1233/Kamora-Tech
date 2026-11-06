@@ -1,7 +1,9 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { PortfolioProject } from "@/lib/types";
 import { deletePortfolioAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -13,9 +15,9 @@ export default async function AdminPortfolioPage({
   searchParams: Promise<{ success?: string }>;
 }) {
   const params = await searchParams;
-  const projects = await query<PortfolioProject>(
-    "SELECT * FROM portfolio_projects ORDER BY id DESC",
-  ).catch(() => []);
+  const projects = await apiFetch<PortfolioProject[]>("/admin/portfolio", {
+    admin: true,
+  });
 
   return (
     <>

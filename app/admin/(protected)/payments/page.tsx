@@ -1,14 +1,15 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Payment } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
 export default async function AdminPaymentsPage() {
-  const payments = await query<Payment & { tracking_id: string; customer: string }>(
-    `SELECT p.*, o.tracking_id, u.full_name AS customer
-     FROM payments p JOIN orders o ON o.id = p.order_id JOIN users u ON u.id = o.user_id
-     ORDER BY p.id DESC LIMIT 200`,
-  ).catch(() => []);
+  const payments = await apiFetch<(Payment & { tracking_id: string; customer: string })[]>(
+    "/admin/payments",
+    { admin: true },
+  );
 
   return (
     <>

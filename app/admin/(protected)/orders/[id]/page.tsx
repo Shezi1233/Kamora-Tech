@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Order, OrderItem, Payment, StatusHistory } from "@/lib/types";
 import { formatDateTime, money } from "@/lib/format";
 import { ORDER_STATUSES, PAYMENT_STATUSES } from "@/lib/constants";
 import { updateOrderAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -22,22 +24,14 @@ export default async function AdminOrderDetailPage({
   const orderId = Number.parseInt(id, 10);
   if (!Number.isFinite(orderId)) notFound();
 
-  const order = await queryOne<Order & { full_name: string; email: string; phone: string | null }>(
-    `SELECT o.*, u.full_name, u.email, u.phone FROM orders o JOIN users u ON u.id = o.user_id
-     WHERE o.id = ? LIMIT 1`,
-    [orderId],
-  ).catch(() => null);
+  const order = await apiFetch<
+    Order & { items: OrderItem[]; history: StatusHistory[]; payments: Payment[] }
+  >(`/admin/orders/${orderId}`, { admin: true });
   if (!order) notFound();
 
-  const [items, history, payments] = await Promise.all([
-    query<OrderItem>("SELECT * FROM order_items WHERE order_id = ? ORDER BY id", [order.id]).catch(() => []),
-    query<StatusHistory>(
-      `SELECT h.*, a.full_name AS admin_name FROM order_status_history h
-       LEFT JOIN admins a ON a.id = h.admin_id WHERE h.order_id = ? ORDER BY h.id DESC`,
-      [order.id],
-    ).catch(() => []),
-    query<Payment>("SELECT * FROM payments WHERE order_id = ? ORDER BY id DESC", [order.id]).catch(() => []),
-  ]);
+  const items = order.items ?? [];
+  const history = order.history ?? [];
+  const payments = order.payments ?? [];
 
   return (
     <>

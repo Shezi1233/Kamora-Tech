@@ -1,5 +1,7 @@
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import { saveSettingsAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -11,10 +13,10 @@ export default async function AdminSettingsPage({
   searchParams: Promise<{ success?: string }>;
 }) {
   const params = await searchParams;
-  const rows = await query<{ setting_key: string; setting_value: string | null }>(
-    "SELECT setting_key, setting_value FROM settings",
-  ).catch(() => []);
-  const settings = Object.fromEntries(rows.map((row) => [row.setting_key, row.setting_value ?? ""]));
+  const settings = await apiFetch<{ site_notice: string; support_email: string }>(
+    "/admin/settings",
+    { admin: true },
+  );
 
   return (
     <>

@@ -1,7 +1,9 @@
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { ContactMessage } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 import { messageAction } from "@/lib/actions/admin";
+
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -14,10 +16,10 @@ export default async function AdminMessagesPage({
 }) {
   const params = await searchParams;
   const status = one(params.status);
-  const messages = await query<ContactMessage>(
-    `SELECT * FROM contact_messages ${status ? "WHERE status = ?" : ""} ORDER BY id DESC LIMIT 200`,
-    status ? [status] : [],
-  ).catch(() => []);
+  const path = status
+    ? `/admin/messages?${new URLSearchParams({ status_filter: status }).toString()}`
+    : "/admin/messages";
+  const messages = await apiFetch<ContactMessage[]>(path, { admin: true });
 
   return (
     <>
