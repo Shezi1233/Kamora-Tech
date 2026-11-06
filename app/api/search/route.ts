@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { query } from "@/lib/db";
+
+import { apiFetch } from "@/lib/api";
+import type { Service } from "@/lib/types";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -7,22 +11,24 @@ export async function GET(request: Request) {
   if (q.length < 2) return NextResponse.json({ items: [] });
 
   try {
-    const like = `%${q}%`;
-    const items = await query<{
-      id: number;
-      title: string;
-      slug: string;
-      category_name: string;
-    }>(
-      `SELECT s.id, s.title, s.slug, c.name AS category_name
-       FROM services s JOIN categories c ON c.id = s.category_id
-       WHERE s.is_active = 1 AND (s.title LIKE ? OR s.short_description LIKE ? OR c.name LIKE ?)
-       ORDER BY s.is_featured DESC, s.title
-       LIMIT 8`,
-      [like, like, like],
+    const data = await apiFetch<{ items: Service[] }>(
+      `/services?${new URLSearchParams({
+        active_only: "true",
+        q,
+        page_size: "8",
+        sort: "featured",
+      }).toString()}`,
     );
-    return NextResponse.json({ items });
-  } catch {
-    return NextResponse.json({ items: [] });
+    return NextResponse.json({
+      items: data.items.map((item) => ({
+        id: item.id,
+        title: item.title,
+        slug: item.slug,
+        category_name: item.category_name ?? "",
+      })),
+    });
+  } catch (error) {
+    console.error("[api/search] failed", error);
+    return NextResponse.json({ items: [] }, { status: 503 });
   }
 }

@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Service } from "@/lib/types";
 import { ServiceCard } from "@/components/site/ServiceCard";
 
 export const metadata = { title: "Search" };
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -15,15 +16,22 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const q = one((await searchParams).q).trim();
-  const services = q
-    ? await query<Service & { category_name: string }>(
-        `SELECT s.*, c.name AS category_name FROM services s
-         JOIN categories c ON c.id = s.category_id
-         WHERE s.is_active = 1 AND (s.title LIKE ? OR s.short_description LIKE ? OR s.description LIKE ?)
-         ORDER BY s.is_featured DESC, s.title LIMIT 24`,
-        [`%${q}%`, `%${q}%`, `%${q}%`],
-      ).catch(() => [])
-    : [];
+  let services: Service[] = [];
+  if (q) {
+    try {
+      const data = await apiFetch<{ items: Service[] }>(
+        `/services?${new URLSearchParams({
+          active_only: "true",
+          q,
+          page_size: "24",
+          sort: "featured",
+        }).toString()}`,
+      );
+      services = data.items;
+    } catch (error) {
+      console.error("[search] failed", error);
+    }
+  }
 
   return (
     <section className="section">

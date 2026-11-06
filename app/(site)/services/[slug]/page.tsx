@@ -1,11 +1,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Service, ServiceImage } from "@/lib/types";
 import { imageUrl, priceLabel, serviceFeatures, serviceIcon } from "@/lib/format";
 import { AddToCartButton } from "@/components/ui/AddToCartButton";
 import { ServiceCard } from "@/components/site/ServiceCard";
+
+export const dynamic = "force-dynamic";
 
 export default async function ServiceDetailPage({
   params,
@@ -13,23 +15,14 @@ export default async function ServiceDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const service = await queryOne<Service & { category_name: string; category_slug: string }>(
-    `SELECT s.*, c.name AS category_name, c.slug AS category_slug
-     FROM services s JOIN categories c ON c.id = s.category_id
-     WHERE s.slug = ? AND s.is_active = 1 LIMIT 1`,
-    [slug],
-  ).catch(() => null);
+  const service = await apiFetch<Service & { category_name: string; category_slug: string }>(
+    `/services/${encodeURIComponent(slug)}`,
+  );
   if (!service) notFound();
 
   const [images, related] = await Promise.all([
-    query<ServiceImage>("SELECT * FROM service_images WHERE service_id = ? ORDER BY sort_order", [service.id]).catch(() => []),
-    query<Service & { category_name: string }>(
-      `SELECT s.*, c.name AS category_name FROM services s
-       JOIN categories c ON c.id = s.category_id
-       WHERE s.category_id = ? AND s.id <> ? AND s.is_active = 1
-       ORDER BY s.is_featured DESC LIMIT 3`,
-      [service.category_id, service.id],
-    ).catch(() => []),
+    apiFetch<ServiceImage[]>(`/services/${service.id}/images`),
+    apiFetch<Service[]>(`/services/${service.id}/related`),
   ]);
 
   const features = serviceFeatures(service.features);

@@ -4,6 +4,7 @@ export interface Category {
   slug: string;
   description: string | null;
   is_active: number;
+  service_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -25,6 +26,7 @@ export interface Service {
   created_at?: string;
   updated_at?: string;
   category_name?: string;
+  category_slug?: string;
 }
 
 export interface ServiceImage {

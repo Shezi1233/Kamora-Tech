@@ -33,9 +33,26 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# python backend
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+backend/uploads/*
+!backend/uploads/.gitkeep
+
 # vercel
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local database backups
+/backups/
+
+# backend is a separate repository/service
+/backend/

@@ -1,15 +1,16 @@
 import Image from "next/image";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { PortfolioProject } from "@/lib/types";
 import { imageUrl } from "@/lib/format";
 import { Reveal } from "@/components/ui/Reveal";
 
 export const metadata = { title: "Portfolio" };
+export const dynamic = "force-dynamic";
 
 export default async function PortfolioPage() {
-  const projects = await query<PortfolioProject>(
-    "SELECT * FROM portfolio_projects WHERE is_active = 1 ORDER BY is_featured DESC, id DESC",
-  ).catch(() => []);
+  const projects = await apiFetch<PortfolioProject[]>(
+    "/portfolio?active_only=true",
+  );
 
   return (
     <>

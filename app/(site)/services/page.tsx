@@ -1,9 +1,18 @@
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Category, Service } from "@/lib/types";
 import { ServiceCard } from "@/components/site/ServiceCard";
 
 export const metadata = { title: "Services" };
+export const dynamic = "force-dynamic";
+
+type ServicePage = {
+  items: Service[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+};
 
 type Params = {
   q?: string;
@@ -25,37 +34,21 @@ export default async function ServicesPage({ searchParams }: { searchParams: Pro
   const sort = one(params.sort) === "title" ? "title" : "featured";
   const page = Math.max(1, Number.parseInt(one(params.page), 10) || 1);
 
-  const categories = await query<Category>(
-    "SELECT * FROM categories WHERE is_active = 1 ORDER BY name",
-  ).catch(() => []);
+  const categories = await apiFetch<Category[]>("/categories?active_only=true");
 
-  const conditions = ["s.is_active = 1"];
-  const values: (string | number)[] = [];
-  if (q) {
-    conditions.push("(s.title LIKE ? OR s.short_description LIKE ? OR s.description LIKE ?)");
-    values.push(`%${q}%`, `%${q}%`, `%${q}%`);
-  }
-  if (category) {
-    conditions.push("c.slug = ?");
-    values.push(category);
-  }
-  const where = conditions.join(" AND ");
-  const order = sort === "title" ? "s.title ASC" : "s.is_featured DESC, s.id ASC";
+  const apiParams = new URLSearchParams();
+  if (q) apiParams.set("q", q);
+  if (category) apiParams.set("category", category);
+  if (sort === "title") apiParams.set("sort", sort);
+  if (page > 1) apiParams.set("page", String(page));
+  apiParams.set("page_size", String(PAGE_SIZE));
 
-  const [{ total }] = await query<{ total: number }>(
-    `SELECT COUNT(*) AS total FROM services s JOIN categories c ON c.id = s.category_id WHERE ${where}`,
-    values,
-  ).catch(() => [{ total: 0 }]);
-  const totalPages = Math.max(1, Math.ceil(Number(total) / PAGE_SIZE));
+  const servicePage = await apiFetch<ServicePage>(`/services?${apiParams.toString()}`);
+
+  const total = Number(servicePage.total ?? 0);
+  const totalPages = Math.max(1, Number(servicePage.total_pages ?? 1));
   const currentPage = Math.min(page, totalPages);
-  const offset = (currentPage - 1) * PAGE_SIZE;
-
-  const services = await query<Service & { category_name: string }>(
-    `SELECT s.*, c.name AS category_name FROM services s
-     JOIN categories c ON c.id = s.category_id
-     WHERE ${where} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-    values,
-  ).catch(() => []);
+  const services = servicePage.items;
 
   function pageHref(nextPage: number) {
     const search = new URLSearchParams();

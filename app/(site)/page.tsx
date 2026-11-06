@@ -1,26 +1,26 @@
 import Link from "next/link";
 import Image from "next/image";
-import { query } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Category, PortfolioProject, Service, Testimonial } from "@/lib/types";
 import { ServiceCard } from "@/components/site/ServiceCard";
 import { Reveal } from "@/components/ui/Reveal";
 import { imageUrl } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
+type ServicePage = { items: Service[] };
+
 export default async function HomePage() {
-  const [categories, featured, projects, testimonials] = await Promise.all([
-    query<Category>("SELECT * FROM categories WHERE is_active = 1 ORDER BY name LIMIT 8").catch(() => []),
-    query<Service & { category_name: string }>(
-      `SELECT s.*, c.name AS category_name FROM services s
-       JOIN categories c ON c.id = s.category_id
-       WHERE s.is_active = 1 ORDER BY s.is_featured DESC, s.id LIMIT 8`,
-    ).catch(() => []),
-    query<PortfolioProject>(
-      "SELECT * FROM portfolio_projects WHERE is_active = 1 ORDER BY is_featured DESC, id DESC LIMIT 6",
-    ).catch(() => []),
-    query<Testimonial>(
-      "SELECT * FROM testimonials WHERE is_approved = 1 ORDER BY id DESC LIMIT 3",
-    ).catch(() => []),
+  const [categories, featuredPage, projects, testimonials] = await Promise.all([
+    apiFetch<Category[]>("/categories?active_only=true"),
+    apiFetch<ServicePage>("/services?active_only=true&page_size=8&sort=featured"),
+    apiFetch<PortfolioProject[]>("/portfolio?active_only=true"),
+    apiFetch<Testimonial[]>("/testimonials?approved_only=true"),
   ]);
+  const categoriesShown = categories.slice(0, 8);
+  const featured = featuredPage.items.slice(0, 8);
+  const projectsShown = projects.slice(0, 6);
+  const testimonialsShown = testimonials.slice(0, 3);
 
   return (
     <>
@@ -205,7 +205,7 @@ export default async function HomePage() {
             </div>
           </div>
           <div className="row g-3">
-            {categories.map((category) => (
+            {categoriesShown.map((category) => (
               <div className="col-6 col-md-4 col-lg-3" key={category.id}>
                 <Link
                   href={`/services?category=${category.slug}`}
@@ -237,21 +237,13 @@ export default async function HomePage() {
               <Link href="/services" className="btn btn-outline-light">Browse all services</Link>
             </div>
           </div>
-          {featured.length > 0 ? (
-            <div className="row g-4">
-              {featured.map((service) => (
-                <div className="col-md-6 col-xl-3" key={service.id}>
-                  <ServiceCard service={service} />
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="card p-4 text-center">
-              <h3 className="h5">Services are being updated</h3>
-              <p className="text-secondary mb-3">Browse the full catalogue or tell us what you need.</p>
-              <Link href="/services" className="btn btn-primary align-self-center">View all services</Link>
-            </div>
-          )}
+          <div className="row g-4">
+            {featured.map((service) => (
+              <div className="col-md-6 col-xl-3" key={service.id}>
+                <ServiceCard service={service} />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -278,7 +270,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {projects.length > 0 ? (
+      {projectsShown.length > 0 ? (
         <section className="section section-alt">
           <div className="container">
             <div className="row align-items-end mb-4 g-3">
@@ -291,7 +283,7 @@ export default async function HomePage() {
               </div>
             </div>
             <div className="row g-4">
-              {projects.map((project) => {
+              {projectsShown.map((project) => {
                 const src = imageUrl(project.image);
                 return (
                   <div className="col-md-6 col-lg-4" key={project.id}>
@@ -317,13 +309,13 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {testimonials.length > 0 ? (
+      {testimonialsShown.length > 0 ? (
         <section className="section">
           <div className="container">
             <p className="section-eyebrow mb-1">Client feedback</p>
             <h2 className="mb-4">What people say</h2>
             <div className="row g-4">
-              {testimonials.map((testimonial) => (
+              {testimonialsShown.map((testimonial) => (
                 <div className="col-md-4" key={testimonial.id}>
                   <Reveal>
                     <div className="card h-100 p-4">
