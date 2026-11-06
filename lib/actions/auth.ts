@@ -1,18 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createHash, randomBytes } from "node:crypto";
-import { execute, queryOne } from "@/lib/db";
-import {
-  createSession,
-  destroySession,
-  getCurrentUser,
-  hashPassword,
-  verifyPassword,
-} from "@/lib/session";
-import { mergeGuestCartIntoDb } from "@/lib/cart";
+
+import { ApiError, apiFetch } from "@/lib/api";
+import { clearUserCookie, setAdminCookie, setUserCookie } from "@/lib/cookies";
 import { email as isEmail, lengthBetween, passwordOk, text } from "@/lib/validation";
-import type { User } from "@/lib/types";
+import type { Admin, User } from "@/lib/types";
 
 export type AuthState = {
   error?: string;
@@ -20,14 +13,11 @@ export type AuthState = {
   resetLink?: string;
 };
 
-const attempts = new Map<string, number[]>();
-
-function recentAttempts(key: string): number[] {
-  const now = Date.now();
-  const list = (attempts.get(key) ?? []).filter((t) => t > now - 10 * 60 * 1000);
-  attempts.set(key, list);
-  return list;
-}
+type TokenResponse = {
+  access_token: string;
+  user?: User | null;
+  admin?: Admin | null;
+};
 
 function safeNext(value: FormDataEntryValue | null): string {
   const next = text(value);
@@ -48,16 +38,19 @@ export async function signupAction(_prev: AuthState, formData: FormData): Promis
   if (password !== confirm) return { error: "Passwords do not match." };
   if (!terms) return { error: "Please accept the terms." };
 
-  const existing = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = ?", [email]);
-  if (existing) return { error: "An account with this email already exists. Please log in." };
-
-  const passwordHash = await hashPassword(password);
-  await execute("INSERT INTO users (full_name, email, phone, password_hash) VALUES (?, ?, ?, ?)", [
-    name,
-    email,
-    phone || null,
-    passwordHash,
-  ]);
+  try {
+    await apiFetch("/auth/register", {
+      method: "POST",
+      body: {
+        full_name: name,
+        email,
+        phone: phone || null,
+        password,
+      },
+    });
+  } catch (error) {
+    return { error: error instanceof ApiError ? error.message : "Could not create your account." };
+  }
   redirect("/login?registered=1");
 }
 
@@ -66,53 +59,51 @@ export async function loginAction(_prev: AuthState, formData: FormData): Promise
   const password = text(formData.get("password"));
   const next = safeNext(formData.get("next"));
 
-  const list = recentAttempts(email || "unknown");
-  if (list.length >= 10) {
-    return { error: "Too many login attempts. Please wait 10 minutes and try again." };
-  }
   if (!isEmail(email) || password === "") {
     return { error: "Please enter your email and password." };
   }
 
-  const user = await queryOne<User & { password_hash: string }>(
-    "SELECT id, full_name, email, phone, is_active, password_hash FROM users WHERE email = ?",
-    [email],
-  );
-  const userPasswordOk = user ? await verifyPassword(password, user.password_hash) : false;
+  let userToken: string | null = null;
+  let adminToken: string | null = null;
 
-  if (!userPasswordOk) {
-    const admin = await queryOne<{ id: number; is_active: number; password_hash: string }>(
-      "SELECT id, is_active, password_hash FROM admins WHERE email = ?",
-      [email],
-    );
-    if (admin && (await verifyPassword(password, admin.password_hash))) {
-      if (Number(admin.is_active) !== 1) {
-        return { error: "Admin account is deactivated." };
+  try {
+    const data = await apiFetch<TokenResponse>("/auth/login", {
+      method: "POST",
+      body: { email, password },
+    });
+    userToken = data.access_token;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      try {
+        const adminData = await apiFetch<TokenResponse>("/admin/auth/login", {
+          method: "POST",
+          body: { email, password },
+        });
+        adminToken = adminData.access_token;
+      } catch {
+        return { error: "Email or password is incorrect." };
       }
-      attempts.delete(email);
-      await createSession("admin", admin.id);
-      redirect("/admin");
+    } else {
+      return {
+        error: error instanceof ApiError ? error.message : "Email or password is incorrect.",
+      };
     }
-    list.push(Date.now());
-    attempts.set(email, list);
-    return { error: "Email or password is incorrect." };
   }
 
-  if (!user) {
-    return { error: "Email or password is incorrect." };
+  if (adminToken) {
+    await setAdminCookie(adminToken);
+    redirect("/admin");
   }
-  if (Number(user.is_active) !== 1) {
-    return { error: "Your account is deactivated." };
-  }
-
-  attempts.delete(email);
-  await createSession("user", user.id);
-  await mergeGuestCartIntoDb(user.id);
+  if (userToken) await setUserCookie(userToken);
   redirect(next);
 }
 
 export async function logoutAction(): Promise<void> {
-  await destroySession("user");
+  try {
+    await apiFetch("/auth/logout", { method: "POST" });
+  } finally {
+    await clearUserCookie();
+  }
   redirect("/");
 }
 
@@ -123,24 +114,17 @@ export async function forgotPasswordAction(
   const email = text(formData.get("email")).toLowerCase();
   if (!isEmail(email)) return { error: "Please enter a valid email address." };
 
-  const user = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = ?", [email]);
-  let resetLink: string | undefined;
-  if (user) {
-    const token = randomBytes(32).toString("hex");
-    const tokenHash = createHash("sha256").update(token).digest("hex");
-    await execute(
-      "UPDATE users SET reset_token = ?, reset_expires = DATE_ADD(NOW(), INTERVAL 1 HOUR) WHERE id = ?",
-      [tokenHash, user.id],
+  try {
+    const data = await apiFetch<{ success: string; reset_link?: string | null }>(
+      "/auth/forgot-password",
+      { method: "POST", body: { email } },
     );
-    const base = process.env.APP_URL || "http://localhost:3000";
-    resetLink = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+    return { success: data.success, resetLink: data.reset_link ?? undefined };
+  } catch (error) {
+    return {
+      error: error instanceof ApiError ? error.message : "Could not create a reset link.",
+    };
   }
-
-  return {
-    success:
-      "If an account exists for that email, a password reset link has been created (valid for 1 hour).",
-    resetLink,
-  };
 }
 
 export async function resetPasswordAction(
@@ -154,18 +138,16 @@ export async function resetPasswordAction(
   if (!passwordOk(password)) return { error: "Password must be at least 8 characters." };
   if (password !== confirm) return { error: "Passwords do not match." };
 
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const user = await queryOne<{ id: number }>(
-    "SELECT id FROM users WHERE reset_token = ? AND reset_expires > NOW() LIMIT 1",
-    [tokenHash],
-  );
-  if (!user) return { error: "This reset link is invalid or expired." };
-
-  const passwordHash = await hashPassword(password);
-  await execute(
-    "UPDATE users SET password_hash = ?, reset_token = NULL, reset_expires = NULL WHERE id = ?",
-    [passwordHash, user.id],
-  );
+  try {
+    await apiFetch("/auth/reset-password", {
+      method: "POST",
+      body: { token, password },
+    });
+  } catch (error) {
+    return {
+      error: error instanceof ApiError ? error.message : "This reset link is invalid or expired.",
+    };
+  }
   redirect("/login?reset=1");
 }
 
@@ -173,18 +155,21 @@ export async function updateProfileAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/dashboard/profile");
-
   const name = text(formData.get("full_name"));
   const phone = text(formData.get("phone"));
   if (!lengthBetween(name, 2, 150)) return { error: "Please enter your full name." };
 
-  await execute("UPDATE users SET full_name = ?, phone = ? WHERE id = ?", [
-    name,
-    phone || null,
-    user.id,
-  ]);
+  try {
+    await apiFetch("/auth/profile", {
+      method: "PATCH",
+      body: { full_name: name, phone: phone || null },
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/login?next=/dashboard/profile");
+    }
+    return { error: error instanceof ApiError ? error.message : "Could not update your profile." };
+  }
   return { success: "Profile updated." };
 }
 
@@ -192,26 +177,23 @@ export async function changePasswordAction(
   _prev: AuthState,
   formData: FormData,
 ): Promise<AuthState> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login?next=/dashboard/change-password");
-
   const current = text(formData.get("current_password"));
   const password = text(formData.get("password"));
   const confirm = text(formData.get("password_confirm"));
 
-  const row = await queryOne<{ password_hash: string }>(
-    "SELECT password_hash FROM users WHERE id = ?",
-    [user.id],
-  );
-  if (!row || !(await verifyPassword(current, row.password_hash))) {
-    return { error: "Current password is incorrect." };
-  }
   if (!passwordOk(password)) return { error: "New password must be at least 8 characters." };
   if (password !== confirm) return { error: "New passwords do not match." };
 
-  await execute("UPDATE users SET password_hash = ? WHERE id = ?", [
-    await hashPassword(password),
-    user.id,
-  ]);
+  try {
+    await apiFetch("/auth/change-password", {
+      method: "POST",
+      body: { current_password: current, password },
+    });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      redirect("/login?next=/dashboard/change-password");
+    }
+    return { error: error instanceof ApiError ? error.message : "Could not change your password." };
+  }
   return { success: "Password changed." };
 }
