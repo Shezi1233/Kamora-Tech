@@ -1,8 +1,9 @@
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 import { requireUser } from "@/lib/session";
-import { queryOne } from "@/lib/db";
 
 export const metadata = { title: "Order Placed" };
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -15,12 +16,16 @@ export default async function CheckoutSuccessPage({
 }) {
   const user = await requireUser("/checkout");
   const tracking = one((await searchParams).tracking).trim();
-  const order = tracking
-    ? await queryOne<{ tracking_id: string }>(
-        "SELECT tracking_id FROM orders WHERE tracking_id = ? AND user_id = ? LIMIT 1",
-        [tracking, user.id],
-      ).catch(() => null)
-    : null;
+  let order: { tracking_id: string } | null = null;
+  if (tracking) {
+    try {
+      order = await apiFetch<{ tracking_id: string }>(
+        `/orders/track?tracking=${encodeURIComponent(tracking)}`,
+      );
+    } catch (error) {
+      console.error("[checkout] tracking lookup failed", error);
+    }
+  }
 
   return (
     <section className="section">

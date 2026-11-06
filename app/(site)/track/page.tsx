@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { query, queryOne } from "@/lib/db";
+import { apiFetch } from "@/lib/api";
 import type { Order, OrderItem, StatusHistory } from "@/lib/types";
 import { formatDate, formatDateTime, money } from "@/lib/format";
 import { requireUser } from "@/lib/session";
 
 export const metadata = { title: "Track Order" };
+export const dynamic = "force-dynamic";
 
 function one(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? "";
@@ -17,21 +18,22 @@ export default async function TrackPage({
 }) {
   const tracking = one((await searchParams).tracking).trim();
   const nextPath = tracking ? `/track?tracking=${encodeURIComponent(tracking)}` : "/track";
-  const user = await requireUser(nextPath);
+  await requireUser(nextPath);
   let order: Order | null = null;
   let items: OrderItem[] = [];
   let history: StatusHistory[] = [];
 
   if (tracking) {
-    order = await queryOne<Order>(
-      "SELECT * FROM orders WHERE tracking_id = ? AND user_id = ? LIMIT 1",
-      [tracking, user.id],
-    ).catch(() => null);
-    if (order) {
-      [items, history] = await Promise.all([
-        query<OrderItem>("SELECT * FROM order_items WHERE order_id = ? ORDER BY id", [order.id]).catch(() => []),
-        query<StatusHistory>("SELECT * FROM order_status_history WHERE order_id = ? ORDER BY id DESC", [order.id]).catch(() => []),
-      ]);
+    try {
+      const data = await apiFetch<Order & { items: OrderItem[]; history: StatusHistory[] }>(
+        `/orders/track?tracking=${encodeURIComponent(tracking)}`,
+      );
+      order = data;
+      items = data.items ?? [];
+      history = data.history ?? [];
+    } catch (error) {
+      console.error("[track] lookup failed", error);
+      order = null;
     }
   }
 

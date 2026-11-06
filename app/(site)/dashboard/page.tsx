@@ -1,21 +1,38 @@
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 import { requireUser } from "@/lib/session";
-import { query, queryOne } from "@/lib/db";
 import type { Notification, Order } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
+type DashboardData = {
+  total_orders: number;
+  active_orders: number;
+  unread_notifications: number;
+  recent_orders: Order[];
+  notifications: Notification[];
+};
+
 export default async function DashboardPage() {
-  const user = await requireUser("/dashboard");
-  const [orderCount, activeCount, unread, recent, notifications] = await Promise.all([
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM orders WHERE user_id = ?", [user.id]).catch(() => null),
-    queryOne<{ total: number }>(
-      "SELECT COUNT(*) AS total FROM orders WHERE user_id = ? AND status NOT IN ('Delivered','Completed','Cancelled')",
-      [user.id],
-    ).catch(() => null),
-    queryOne<{ total: number }>("SELECT COUNT(*) AS total FROM notifications WHERE user_id = ? AND is_read = 0", [user.id]).catch(() => null),
-    query<Order>("SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC LIMIT 5", [user.id]).catch(() => []),
-    query<Notification>("SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 4", [user.id]).catch(() => []),
-  ]);
+  await requireUser("/dashboard");
+  let data: DashboardData = {
+    total_orders: 0,
+    active_orders: 0,
+    unread_notifications: 0,
+    recent_orders: [],
+    notifications: [],
+  };
+  try {
+    data = await apiFetch<DashboardData>("/dashboard");
+  } catch (error) {
+    console.error("[dashboard] failed", error);
+  }
+  const orderCount = { total: data.total_orders };
+  const activeCount = { total: data.active_orders };
+  const unread = { total: data.unread_notifications };
+  const recent = data.recent_orders;
+  const notifications = data.notifications;
 
   return (
     <>

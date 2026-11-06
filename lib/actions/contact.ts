@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { execute } from "@/lib/db";
+
+import { ApiError, apiFetch } from "@/lib/api";
 import { email as isEmail, lengthBetween, text } from "@/lib/validation";
 
 export type ContactState = {
@@ -23,23 +24,24 @@ export async function contactAction(
     return { error: "Please write a message of at least 10 characters." };
   }
 
-  await execute(
-    "INSERT INTO contact_messages (name, email, subject, message) VALUES (?, ?, ?, ?)",
-    [name, email, subject || null, message],
-  );
-  await execute(
-    "INSERT INTO notifications (admin_id, type, message) VALUES (NULL, 'contact_message', ?)",
-    [`New contact message from ${name}`],
-  );
+  try {
+    await apiFetch("/contact", {
+      method: "POST",
+      body: { name, email, subject: subject || null, message },
+    });
+  } catch (error) {
+    return {
+      error: error instanceof ApiError ? error.message : "Could not send your message.",
+    };
+  }
   redirect("/contact?sent=1");
 }
 
 export async function markNotificationsReadAction(): Promise<void> {
-  const { getCurrentUser } = await import("@/lib/session");
-  const { execute: run } = await import("@/lib/db");
-  const user = await getCurrentUser();
-  if (user) {
-    await run("UPDATE notifications SET is_read = 1 WHERE user_id = ?", [user.id]);
+  try {
+    await apiFetch("/notifications/read", { method: "POST" });
+  } catch (error) {
+    console.error("[notifications] could not mark as read", error);
   }
   redirect("/dashboard/notifications");
 }

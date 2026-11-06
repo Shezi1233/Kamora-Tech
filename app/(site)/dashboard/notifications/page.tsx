@@ -1,15 +1,14 @@
+import { apiFetch } from "@/lib/api";
 import { requireUser } from "@/lib/session";
-import { query } from "@/lib/db";
 import type { Notification } from "@/lib/types";
 import { formatDateTime } from "@/lib/format";
 import { markNotificationsReadAction } from "@/lib/actions/contact";
 
+export const dynamic = "force-dynamic";
+
 export default async function NotificationsPage() {
-  const user = await requireUser("/dashboard/notifications");
-  const notifications = await query<Notification>(
-    "SELECT * FROM notifications WHERE user_id = ? ORDER BY id DESC LIMIT 100",
-    [user.id],
-  ).catch(() => []);
+  await requireUser("/dashboard/notifications");
+  const notifications = await apiFetch<Notification[]>("/notifications");
   const unread = notifications.filter((note) => Number(note.is_read) === 0).length;
 
   return (

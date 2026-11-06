@@ -1,15 +1,14 @@
 import Link from "next/link";
+import { apiFetch } from "@/lib/api";
 import { requireUser } from "@/lib/session";
-import { query } from "@/lib/db";
 import type { Order } from "@/lib/types";
 import { formatDate, money } from "@/lib/format";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardOrdersPage() {
-  const user = await requireUser("/dashboard/orders");
-  const orders = await query<Order>(
-    "SELECT * FROM orders WHERE user_id = ? ORDER BY id DESC",
-    [user.id],
-  ).catch(() => []);
+  await requireUser("/dashboard/orders");
+  const orders = await apiFetch<Order[]>("/orders");
 
   return (
     <div className="card p-4">
