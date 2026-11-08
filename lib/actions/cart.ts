@@ -9,6 +9,7 @@ import {
   removeCartLine,
   updateCartQuantities,
 } from "@/lib/cart";
+import { setCartCookie } from "@/lib/cookies";
 
 export type CartActionResult = {
   ok: boolean;
@@ -68,4 +69,9 @@ export async function clearCartAction(): Promise<void> {
 
 export async function cartSummary() {
   return getCartLines();
+}
+
+export async function setCartTokenAction(token: string): Promise<void> {
+  const clean = String(token ?? "").trim();
+  if (clean) await setCartCookie(clean);
 }
