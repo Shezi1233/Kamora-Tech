@@ -56,3 +56,7 @@ next-env.d.ts
 
 # backend is a separate repository/service
 /backend/
+
+# local dev logs
+next-dev.log
+next-dev.err
